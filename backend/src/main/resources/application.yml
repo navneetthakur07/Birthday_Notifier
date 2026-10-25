@@ -1,0 +1,55 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: birthday-notifier-backend
+
+  datasource:
+    # If SPRING_DATASOURCE_URL is supplied (e.g. Neon PostgreSQL), use PostgreSQL driver.
+    # Otherwise, seamlessly fall back to local H2 in-memory database for local zero-config runs.
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:birthdaydb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: ${HIBERNATE_DIALECT:org.hibernate.dialect.H2Dialect}
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # SMTP Configuration (Works with Gmail App Password or Brevo SMTP)
+  mail:
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    expiration-ms: 86400000 # 24 hours
+  reminder:
+    cron: "${APP_REMINDER_CRON:0 50 23 * * ?}" # Runs every day at 23:50:00 (11:50 PM)
+  mail:
+    from-email: ${APP_MAIL_FROM_EMAIL:birthday-notifier@noreply.com}
+    from-name: ${APP_MAIL_FROM_NAME:Birthday Reminder Bot}
