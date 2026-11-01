@@ -38,3 +38,4 @@ public class AppConfigDto {
         this.description = description;
     }
 }
+

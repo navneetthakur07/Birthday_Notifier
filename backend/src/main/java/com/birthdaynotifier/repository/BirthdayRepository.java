@@ -26,3 +26,4 @@ public interface BirthdayRepository extends JpaRepository<Birthday, UUID> {
 
     long countByUserId(UUID userId);
 }
+

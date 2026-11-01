@@ -70,3 +70,4 @@ public class AdminController {
         return ResponseEntity.ok(new MessageResponse("Midnight Eve Reminder executed for " + date + ". " + count + " reminders dispatched.", true));
     }
 }
+

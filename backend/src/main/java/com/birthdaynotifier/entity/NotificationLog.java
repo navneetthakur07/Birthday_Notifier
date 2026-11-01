@@ -123,3 +123,4 @@ public class NotificationLog {
         this.errorMessage = errorMessage;
     }
 }
+

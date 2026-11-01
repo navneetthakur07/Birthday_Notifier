@@ -82,3 +82,4 @@ public class UserSummaryResponse {
         this.createdAt = createdAt;
     }
 }
+

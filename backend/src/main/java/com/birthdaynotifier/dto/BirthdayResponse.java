@@ -198,3 +198,4 @@ public class BirthdayResponse {
         isTomorrow = tomorrow;
     }
 }
+

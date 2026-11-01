@@ -15,3 +15,4 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     Page<NotificationLog> findAllByOrderByScheduledForDesc(Pageable pageable);
     long countByStatus(String status);
 }
+

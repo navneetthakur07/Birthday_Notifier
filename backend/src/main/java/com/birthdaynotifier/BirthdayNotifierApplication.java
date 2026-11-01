@@ -12,3 +12,4 @@ public class BirthdayNotifierApplication {
         SpringApplication.run(BirthdayNotifierApplication.class, args);
     }
 }
+

@@ -10,3 +10,4 @@ import java.util.Optional;
 public interface AppConfigRepository extends JpaRepository<AppConfig, String> {
     Optional<AppConfig> findByConfigKey(String configKey);
 }
+

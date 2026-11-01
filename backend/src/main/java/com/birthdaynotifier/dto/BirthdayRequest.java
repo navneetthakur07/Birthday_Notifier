@@ -106,3 +106,4 @@ public class BirthdayRequest {
         this.reminderEnabled = reminderEnabled;
     }
 }
+

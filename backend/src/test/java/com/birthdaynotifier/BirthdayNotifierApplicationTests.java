@@ -10,3 +10,4 @@ class BirthdayNotifierApplicationTests {
     void contextLoads() {
     }
 }
+

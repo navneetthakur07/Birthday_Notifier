@@ -27,7 +27,7 @@ public class BirthdayReminderScheduler {
     }
 
     /**
-     * Executes everyday at 23:50 (11:50 PM) server time.
+     * Executes every day at 23:50 (11:50 PM) server time.
      * Looks up birthdays for tomorrow (plus 1 day) and sends reminder emails.
      */
     @Scheduled(cron = "${app.reminder.cron:0 50 23 * * ?}")
@@ -62,3 +62,4 @@ public class BirthdayReminderScheduler {
         return successCount;
     }
 }
+

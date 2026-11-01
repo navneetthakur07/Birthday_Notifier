@@ -192,3 +192,4 @@ Birthday_Notifier/
 ├── test_server.ps1             # End-to-end verification script
 └── README.md                   # Full documentation & deployment guide
 ```
+

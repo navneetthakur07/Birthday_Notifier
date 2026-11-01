@@ -246,3 +246,4 @@ export default function AddEditBirthdayModal({ isOpen, onClose, onSave, editingB
     </div>
   );
 }
+

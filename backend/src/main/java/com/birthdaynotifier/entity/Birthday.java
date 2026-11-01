@@ -199,3 +199,4 @@ public class Birthday {
         this.updatedAt = updatedAt;
     }
 }
+

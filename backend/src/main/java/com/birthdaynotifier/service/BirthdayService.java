@@ -86,3 +86,4 @@ public class BirthdayService {
         target.setReminderEnabled(req.isReminderEnabled());
     }
 }
+

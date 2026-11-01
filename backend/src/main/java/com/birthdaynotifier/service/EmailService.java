@@ -145,3 +145,4 @@ public class EmailService {
             """.formatted(badge, userName, relationship.toLowerCase(), personName, personName, relationship, ageText, notes);
     }
 }
+

@@ -184,3 +184,4 @@ Once deployed, you can immediately log into the live website using the seeded cr
 - [ ] Deploy backend on Render.com with environment variables (Step D).
 - [ ] Deploy frontend on Vercel with `VITE_API_BASE_URL` (Step E).
 - [ ] Open the live Vercel URL, log in, and test adding birthdays!
+

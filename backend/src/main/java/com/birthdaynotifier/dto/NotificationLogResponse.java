@@ -98,3 +98,4 @@ public class NotificationLogResponse {
         this.errorMessage = errorMessage;
     }
 }
+
