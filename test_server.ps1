@@ -25,30 +25,57 @@ if (-not $started) {
 }
 
 try {
-    # 1. Admin Sign In
+    # 1. Test Public OAuth 2.0 Status
+    Write-Host "`n--- Testing Google OAuth 2.0 Status Endpoint ---"
+    $oauthStatus = Invoke-RestMethod -Uri "http://localhost:8080/api/oauth2/status" -Method Get
+    Write-Host "OAuth 2.0 Status: Provider=$($oauthStatus.provider), Connected=$($oauthStatus.connected)"
+
+    # 2. Admin Sign In
     Write-Host "`n--- Testing Admin Sign In ---"
     $adminLoginBody = @{ email = "admin@birthday.com"; password = "Admin@123" } | ConvertTo-Json
     $adminRes = Invoke-RestMethod -Uri "http://localhost:8080/api/auth/signin" -Method Post -Body $adminLoginBody -ContentType "application/json"
     Write-Host "Admin Logged in! Name: $($adminRes.fullName), Roles: $($adminRes.roles -join ',')"
     $adminToken = $adminRes.token
+    $adminHeaders = @{ Authorization = "Bearer $adminToken" }
 
-    # 2. User Sign In
+    # 3. Google OAuth 2.0 Sign-In / SSO
+    Write-Host "`n--- Testing Google OAuth 2.0 Login / SSO ---"
+    $googleLoginBody = @{ email = "google.user@example.com"; fullName = "Taylor Swift"; googleId = "google-sub-12345" } | ConvertTo-Json
+    $googleRes = Invoke-RestMethod -Uri "http://localhost:8080/api/auth/google-login" -Method Post -Body $googleLoginBody -ContentType "application/json"
+    Write-Host "Google User Logged in! Name: $($googleRes.fullName), Email: $($googleRes.email)"
+
+    # 4. Save OAuth 2.0 Configuration as Admin
+    Write-Host "`n--- Testing Google OAuth 2.0 Configuration Update ---"
+    $cfgBody = @{
+        clientId = "sample-client-id.apps.googleusercontent.com";
+        clientSecret = "sample-client-secret";
+        refreshToken = "1//sample-refresh-token";
+        connectedEmail = "admin.sender@gmail.com"
+    } | ConvertTo-Json
+    $cfgRes = Invoke-RestMethod -Uri "http://localhost:8080/api/oauth2/config" -Method Post -Body $cfgBody -Headers $adminHeaders -ContentType "application/json"
+    Write-Host "OAuth Config Response: $($cfgRes.message)"
+
+    # Verify updated status
+    $updatedStatus = Invoke-RestMethod -Uri "http://localhost:8080/api/oauth2/status" -Method Get
+    Write-Host "Updated OAuth Status: Connected=$($updatedStatus.connected), Email=$($updatedStatus.connectedEmail)"
+
+    # 5. User Sign In
     Write-Host "`n--- Testing User Sign In ---"
     $userLoginBody = @{ email = "user@birthday.com"; password = "User@123" } | ConvertTo-Json
     $userRes = Invoke-RestMethod -Uri "http://localhost:8080/api/auth/signin" -Method Post -Body $userLoginBody -ContentType "application/json"
     Write-Host "User Logged in! Name: $($userRes.fullName), Roles: $($userRes.roles -join ',')"
     $userToken = $userRes.token
-
-    # 3. User Get Birthdays
-    Write-Host "`n--- Testing User Birthdays Retrieval ---"
     $userHeaders = @{ Authorization = "Bearer $userToken" }
+
+    # 6. User Get Birthdays
+    Write-Host "`n--- Testing User Birthdays Retrieval ---"
     $birthdays = Invoke-RestMethod -Uri "http://localhost:8080/api/birthdays" -Method Get -Headers $userHeaders
     Write-Host "Retrieved $($birthdays.Count) birthdays for user:"
     foreach ($b in $birthdays) {
         Write-Host " - $($b.personName) ($($b.relationship)): $($b.formattedBirthday) (Days until: $($b.daysUntil), Tomorrow: $($b.tomorrow))"
     }
 
-    # 4. Trigger Test Reminder
+    # 7. Trigger Test Reminder (Exercises EmailService with OAuth 2.0 priority)
     if ($birthdays.Count -gt 0) {
         $targetId = $birthdays[0].id
         Write-Host "`n--- Testing Manual Reminder Trigger for $($birthdays[0].personName) ---"
@@ -56,13 +83,12 @@ try {
         Write-Host "Reminder dispatch result: $($remRes.message)"
     }
 
-    # 5. Admin Trigger 23:50 Scheduler Job
+    # 8. Admin Trigger 23:50 Scheduler Job
     Write-Host "`n--- Testing Admin Trigger of 23:50 Scheduler ---"
-    $adminHeaders = @{ Authorization = "Bearer $adminToken" }
     $schedRes = Invoke-RestMethod -Uri "http://localhost:8080/api/admin/trigger-scheduler" -Method Post -Headers $adminHeaders
     Write-Host "Scheduler Job result: $($schedRes.message)"
 
-    # 6. Admin Get System Stats and Notification Logs
+    # 9. Admin Get System Stats and Notification Logs
     Write-Host "`n--- Testing Admin Stats and Delivery Logs ---"
     $stats = Invoke-RestMethod -Uri "http://localhost:8080/api/admin/stats" -Method Get -Headers $adminHeaders
     Write-Host "System Stats: $($stats | ConvertTo-Json -Compress)"
@@ -73,9 +99,9 @@ try {
         Write-Host " - Recipient: $($l.recipientEmail), Person: $($l.personName), Status: $($l.status)"
     }
 
-    Write-Host "`nALL BACKEND API TESTS COMPLETED SUCCESSFULLY! 🎉"
+    Write-Host "`nALL BACKEND API & GOOGLE OAUTH 2.0 TESTS COMPLETED SUCCESSFULLY! 🎉"
 
 } finally {
     Write-Host "Stopping backend test server..."
-    Stop-Process -Id $proc.Id -Force
+    try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
 }

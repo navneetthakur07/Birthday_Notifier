@@ -97,6 +97,8 @@ public class DataInitializer implements CommandLineRunner {
         seedConfigIfAbsent("NOTIFICATION_WINDOW_MINS", "10", "Minutes before midnight to trigger reminder (default: 10 mins at 23:50)");
         seedConfigIfAbsent("SENDER_NAME", "Birthday Reminder Bot", "Display name shown in the recipient inbox");
         seedConfigIfAbsent("EMAIL_SUBJECT_TEMPLATE", "🎂 Reminder: {friend_name}'s Birthday is Tomorrow!", "Default subject line for birthday notifications");
+        seedConfigIfAbsent("EMAIL_PROVIDER", "GOOGLE_OAUTH2", "Primary notification engine: GOOGLE_OAUTH2 (modern REST) with optional SMTP fallback");
+        seedConfigIfAbsent("GOOGLE_OAUTH_CONNECTED_EMAIL", "", "Google account email authorized for dispatching reminders");
     }
 
     private void seedConfigIfAbsent(String key, String value, String desc) {
@@ -105,4 +107,3 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 }
-

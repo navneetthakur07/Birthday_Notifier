@@ -4,10 +4,21 @@ import Login from './pages/Login';
 import Navbar from './components/Navbar';
 import UserDashboard from './pages/UserDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import OAuthCallback from './pages/OAuthCallback';
 
 export default function App() {
   const { user, isAdmin, loading } = useAuth();
   const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard' | 'admin'
+
+  // Check if we are receiving an OAuth 2.0 authorization redirect
+  const isOAuthCallback =
+    typeof window !== 'undefined' &&
+    (window.location.pathname.includes('/oauth2/callback') ||
+      new URLSearchParams(window.location.search).has('code'));
+
+  if (isOAuthCallback) {
+    return <OAuthCallback onComplete={() => setCurrentView('admin')} />;
+  }
 
   if (loading) {
     return (
@@ -35,9 +46,8 @@ export default function App() {
         )}
       </main>
       <footer className="py-4 border-t border-slate-200 bg-white/50 text-center text-[11px] text-slate-400">
-        Birthday Reminder Application &bull; 23:50 Midnight Eve Email Service &bull; Spring Boot &amp; React
+        Birthday Reminder Application &bull; 23:50 Midnight Eve Email Service &bull; Google OAuth 2.0 Engine &bull; Spring Boot &amp; React
       </footer>
     </div>
   );
 }
-

@@ -36,6 +36,22 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
+  const googleLogin = async (email, fullName, googleId) => {
+    const response = await api.post('/api/auth/google-login', { email, fullName, googleId });
+    const data = response.data;
+    const userData = {
+      id: data.id,
+      email: data.email,
+      fullName: data.fullName,
+      roles: data.roles || [],
+    };
+    localStorage.setItem('birthday_token', data.token);
+    localStorage.setItem('birthday_user', JSON.stringify(userData));
+    setToken(data.token);
+    setUser(userData);
+    return userData;
+  };
+
   const register = async (fullName, email, password) => {
     const response = await api.post('/api/auth/signup', { fullName, email, password });
     return response.data;
@@ -51,11 +67,10 @@ export const AuthProvider = ({ children }) => {
   const isAdmin = user?.roles?.includes('ROLE_ADMIN') || false;
 
   return (
-    <AuthContext.Provider value={{ user, token, isAdmin, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, isAdmin, loading, login, googleLogin, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
 export const useAuth = () => useContext(AuthContext);
-
