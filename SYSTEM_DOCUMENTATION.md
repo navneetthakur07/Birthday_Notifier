@@ -216,6 +216,15 @@ During testing, five distinct issues prevented successful email delivery:
 - **Root Cause**: Missing API enablement in Google Cloud Console.
 - **Resolution**: Added pre-flight check in `/api/oauth2/diagnose` that tests access to `/gmail/v1/users/me/profile` and flags this exact error if the API is disabled.
 
+### RCA 6: Diagnostic Scope Mismatch — `Request had insufficient authentication scopes`
+- **Technical Issue**: Test emails sent and arrived in the inbox successfully, but clicking **"Diagnose Connection"** returned:
+  ```
+  DIAGNOSTIC FAILED — GOOGLE REJECTED TOKEN
+  Google API error: Request had insufficient authentication scopes.
+  ```
+- **Root Cause**: Google's Gmail API `users/me/profile` endpoint (`GET https://gmail.googleapis.com/gmail/v1/users/me/profile`) requires Gmail **read** scopes (`https://www.googleapis.com/auth/gmail.readonly` or `gmail.metadata`). When an application follows the security principle of least privilege and only requests `https://www.googleapis.com/auth/gmail.send`, Google's API strictly forbids calling profile reading endpoints. Thus, while email delivery succeeded, the diagnostic health check falsely threw a 403 Forbidden error.
+- **Resolution**: Updated `diagnoseConnection()` in `GoogleOAuth2Service.java` to introspect tokens using Google's official OAuth 2.0 `tokeninfo` endpoint (`https://oauth2.googleapis.com/tokeninfo?access_token=...`). The `tokeninfo` endpoint works with any valid token regardless of scope, directly validating that the `gmail.send` scope is active and healthy without demanding intrusive mailbox read permissions. Calls to `users/me/profile` are now wrapped as optional metadata probes that do not fail the diagnostic when `gmail.send` is verified.
+
 ---
 
 ## 6. Codebase Fixes & Enhancements Implemented
@@ -356,3 +365,4 @@ CREATE TABLE notification_logs (
 ---
 
 *Documentation maintained by Antigravity Engineering.*
+

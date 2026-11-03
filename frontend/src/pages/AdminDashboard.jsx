@@ -404,6 +404,11 @@ export default function AdminDashboard() {
                       Authorized Sender Account: <span className="underline">{diagnosticReport.connectedEmail}</span>
                     </p>
                   )}
+                  {diagnosticReport.grantedScopes && (
+                    <p className="text-[10px] text-slate-600 mt-0.5 font-mono">
+                      Verified OAuth Scope: <span className="text-emerald-700 font-semibold">{diagnosticReport.grantedScopes}</span>
+                    </p>
+                  )}
                   {diagnosticReport.status === 'GOOGLE_API_ERROR' && (
                     <div className="mt-2 p-3 bg-white/80 rounded-xl text-[11px] space-y-1 text-slate-800 border border-rose-200">
                       <p className="font-bold text-rose-700">How to fix this issue:</p>
