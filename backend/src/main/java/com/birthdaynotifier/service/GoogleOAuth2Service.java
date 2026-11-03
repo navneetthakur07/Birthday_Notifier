@@ -16,15 +16,14 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.ByteArrayOutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Base64;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 
 @Service
 public class GoogleOAuth2Service {
@@ -34,6 +33,7 @@ public class GoogleOAuth2Service {
     private static final String GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
     private static final String GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
     private static final String GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+    private static final String GMAIL_PROFILE_URL = "https://gmail.googleapis.com/gmail/v1/users/me/profile";
     private static final String GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
     private static final String GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email";
 
@@ -154,7 +154,7 @@ public class GoogleOAuth2Service {
                     this.cachedAccessToken = accessToken;
                     this.accessTokenExpiryEpochMs = System.currentTimeMillis() + ((long) expiresIn * 1000);
 
-                    // Fetch user info to discover the connected email address
+                    // Discover the connected email address from Gmail profile or userinfo
                     String connectedEmail = fetchConnectedEmail(accessToken);
                     if (connectedEmail != null) {
                         saveConfigValue("GOOGLE_OAUTH_CONNECTED_EMAIL", connectedEmail, "Connected Google Account Email");
@@ -167,6 +167,10 @@ public class GoogleOAuth2Service {
                     );
                 }
             }
+        } catch (HttpStatusCodeException ex) {
+            String errorBody = ex.getResponseBodyAsString();
+            logger.error("Failed to exchange code for tokens. Google HTTP {}: {}", ex.getStatusCode(), errorBody);
+            throw new RuntimeException(parseGoogleError(errorBody, ex.getMessage()));
         } catch (Exception ex) {
             logger.error("Failed to exchange authorization code for tokens: {}", ex.getMessage());
             throw new RuntimeException("Google OAuth token exchange failed: " + ex.getMessage(), ex);
@@ -190,16 +194,16 @@ public class GoogleOAuth2Service {
         if (clientId == null || clientId.isBlank() ||
             clientSecret == null || clientSecret.isBlank() ||
             refreshToken == null || refreshToken.isBlank()) {
-            throw new IllegalStateException("Google OAuth 2.0 credentials not fully configured (missing clientId, clientSecret, or refreshToken)");
+            throw new IllegalStateException("Google OAuth 2.0 credentials not fully configured (missing Client ID, Client Secret, or Refresh Token)");
         }
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("client_id", clientId);
-        params.add("client_secret", clientSecret);
-        params.add("refresh_token", refreshToken);
+        params.add("client_id", clientId.trim());
+        params.add("client_secret", clientSecret.trim());
+        params.add("refresh_token", refreshToken.trim());
         params.add("grant_type", "refresh_token");
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
@@ -216,6 +220,10 @@ public class GoogleOAuth2Service {
                 logger.info("Successfully refreshed Google OAuth 2.0 access token (valid for {}s)", expiresIn);
                 return newAccessToken;
             }
+        } catch (HttpStatusCodeException ex) {
+            String errorBody = ex.getResponseBodyAsString();
+            logger.error("Google token refresh rejected. HTTP {}: {}", ex.getStatusCode(), errorBody);
+            throw new RuntimeException(parseGoogleError(errorBody, "Token refresh failed (HTTP " + ex.getStatusCode() + ")"));
         } catch (Exception ex) {
             logger.error("Failed to refresh Google OAuth access token: {}", ex.getMessage());
             throw new RuntimeException("Could not refresh Google OAuth 2.0 access token: " + ex.getMessage(), ex);
@@ -230,17 +238,27 @@ public class GoogleOAuth2Service {
     public String sendEmailViaOAuth2(String toEmail, String fromEmail, String fromName, String subject, String htmlContent) {
         String accessToken = getValidAccessToken();
 
+        // If fromEmail is not specified or is a placeholder, detect actual Gmail user profile email
+        String actualSender = fromEmail;
+        if (actualSender == null || actualSender.isBlank() || actualSender.contains("noreply") || actualSender.contains("example.com")) {
+            String profileEmail = fetchConnectedEmail(accessToken);
+            if (profileEmail != null && !profileEmail.isBlank()) {
+                actualSender = profileEmail;
+                saveConfigValue("GOOGLE_OAUTH_CONNECTED_EMAIL", profileEmail, "Connected Google Account Email");
+            }
+        }
+
         try {
             // Construct RFC 2822 MIME message
             Session session = Session.getInstance(new Properties());
             MimeMessage mimeMessage = new MimeMessage(session);
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
 
-            String sender = (fromName != null && !fromName.isBlank())
-                    ? fromName + " <" + fromEmail + ">"
-                    : fromEmail;
+            String senderHeader = (fromName != null && !fromName.isBlank())
+                    ? fromName + " <" + actualSender + ">"
+                    : actualSender;
 
-            helper.setFrom(sender);
+            helper.setFrom(senderHeader);
             helper.setTo(toEmail);
             helper.setSubject(subject);
             helper.setText(htmlContent, true);
@@ -268,13 +286,104 @@ public class GoogleOAuth2Service {
                 throw new RuntimeException("Gmail API responded with status: " + response.getStatusCode());
             }
 
+        } catch (HttpStatusCodeException ex) {
+            String errorBody = ex.getResponseBodyAsString();
+            logger.error("Gmail API dispatch rejected. HTTP {}: {}", ex.getStatusCode(), errorBody);
+            throw new RuntimeException(parseGoogleError(errorBody, "Gmail API error (" + ex.getStatusCode() + ")"));
         } catch (Exception ex) {
             logger.error("Google OAuth 2.0 email dispatch error for {}: {}", toEmail, ex.getMessage());
             throw new RuntimeException("Google OAuth 2.0 email dispatch failed: " + ex.getMessage(), ex);
         }
     }
 
+    /**
+     * Runs a comprehensive end-to-end diagnostic of the Google OAuth 2.0 connection.
+     */
+    public Map<String, Object> diagnoseConnection() {
+        Map<String, Object> report = new LinkedHashMap<>();
+        String clientId = getEffectiveClientId();
+        String clientSecret = getEffectiveClientSecret();
+        String refreshToken = getEffectiveRefreshToken();
+        String savedEmail = getEffectiveConnectedEmail();
+
+        report.put("clientIdConfigured", clientId != null && !clientId.isBlank());
+        report.put("clientSecretConfigured", clientSecret != null && !clientSecret.isBlank());
+        report.put("refreshTokenConfigured", refreshToken != null && !refreshToken.isBlank());
+
+        if (clientId == null || clientId.isBlank() || clientSecret == null || clientSecret.isBlank() || refreshToken == null || refreshToken.isBlank()) {
+            report.put("success", false);
+            report.put("status", "INCOMPLETE_CREDENTIALS");
+            report.put("message", "Missing Client ID, Client Secret, or Refresh Token. Please enter all three values.");
+            return report;
+        }
+
+        try {
+            // 1. Test Access Token Refresh
+            String accessToken = getValidAccessToken();
+            report.put("tokenRefreshSuccess", true);
+
+            // 2. Query Gmail API Profile to verify API enablement & account identity
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(accessToken);
+            HttpEntity<Void> req = new HttpEntity<>(headers);
+
+            ResponseEntity<String> res = restTemplate.exchange(GMAIL_PROFILE_URL, HttpMethod.GET, req, String.class);
+            if (res.getStatusCode().is2xxSuccessful() && res.getBody() != null) {
+                JsonNode profileNode = objectMapper.readTree(res.getBody());
+                String emailAddress = profileNode.has("emailAddress") ? profileNode.get("emailAddress").asText() : savedEmail;
+                int messagesTotal = profileNode.has("messagesTotal") ? profileNode.get("messagesTotal").asInt() : 0;
+
+                // Auto-sync discovered email
+                if (emailAddress != null && !emailAddress.isBlank()) {
+                    saveConfigValue("GOOGLE_OAUTH_CONNECTED_EMAIL", emailAddress, "Connected Google Account Email");
+                }
+
+                report.put("success", true);
+                report.put("status", "HEALTHY");
+                report.put("connectedEmail", emailAddress);
+                report.put("messagesTotal", messagesTotal);
+                report.put("gmailApiEnabled", true);
+                report.put("message", "Google OAuth 2.0 and Gmail API are healthy! Authorized account: " + emailAddress);
+                return report;
+            }
+        } catch (HttpStatusCodeException ex) {
+            String errorBody = ex.getResponseBodyAsString();
+            report.put("success", false);
+            report.put("status", "GOOGLE_API_ERROR");
+            report.put("httpStatus", ex.getStatusCode().value());
+            report.put("message", parseGoogleError(errorBody, ex.getMessage()));
+            return report;
+        } catch (Exception ex) {
+            report.put("success", false);
+            report.put("status", "ERROR");
+            report.put("message", ex.getMessage());
+            return report;
+        }
+
+        report.put("success", false);
+        report.put("status", "UNKNOWN_ERROR");
+        report.put("message", "Could not complete diagnostic check.");
+        return report;
+    }
+
     private String fetchConnectedEmail(String accessToken) {
+        // Try Gmail API Profile first
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(accessToken);
+            HttpEntity<Void> request = new HttpEntity<>(headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(GMAIL_PROFILE_URL, HttpMethod.GET, request, String.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                JsonNode root = objectMapper.readTree(response.getBody());
+                if (root.has("emailAddress")) {
+                    return root.get("emailAddress").asText();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        // Fallback to userinfo endpoint
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(accessToken);
@@ -287,8 +396,7 @@ public class GoogleOAuth2Service {
                     return root.get("email").asText();
                 }
             }
-        } catch (Exception e) {
-            logger.warn("Could not fetch userinfo email: {}", e.getMessage());
+        } catch (Exception ignored) {
         }
         return null;
     }
@@ -336,6 +444,33 @@ public class GoogleOAuth2Service {
         this.cachedAccessToken = null;
         this.accessTokenExpiryEpochMs = 0;
         logger.info("Google OAuth 2.0 disconnected.");
+    }
+
+    private String parseGoogleError(String responseBody, String defaultMsg) {
+        if (responseBody == null || responseBody.isBlank()) return defaultMsg;
+        try {
+            JsonNode node = objectMapper.readTree(responseBody);
+            if (node.has("error_description")) {
+                String desc = node.get("error_description").asText();
+                String err = node.has("error") ? node.get("error").asText() : "";
+                if ("invalid_grant".equals(err)) {
+                    return "Google rejected the Refresh Token ('invalid_grant'). Cause: The token has expired, was revoked, or was generated with a different Client ID. Please re-generate your refresh token using your exact Client ID & Secret.";
+                }
+                if ("invalid_client".equals(err)) {
+                    return "Google rejected the Client credentials ('invalid_client'). Cause: Client Secret or Client ID is incorrect. Please re-check credentials in Google Cloud Console.";
+                }
+                return "Google OAuth error: " + err + " - " + desc;
+            }
+            if (node.has("error") && node.get("error").has("message")) {
+                String msg = node.get("error").get("message").asText();
+                if (msg.contains("Gmail API has not been used") || msg.contains("is disabled")) {
+                    return "Gmail API is not enabled in your Google Cloud Project. Please enable the 'Gmail API' at https://console.cloud.google.com/apis/library/gmail.googleapis.com";
+                }
+                return "Google API error: " + msg;
+            }
+        } catch (Exception ignored) {
+        }
+        return defaultMsg;
     }
 
     private String getConfigValue(String key, String fallback) {

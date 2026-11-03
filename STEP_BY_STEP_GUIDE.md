@@ -73,8 +73,9 @@ npm run dev
    - Click the **Google OAuth 2.0 Engine** tab:
      - Check connection status.
      - View or enter your Google Client ID, Client Secret, and Refresh Token.
-     - Click **Test OAuth 2.0 Email** to verify instant email delivery.
-   - Check the **Delivery & Audit Logs** table to inspect delivery statuses, timestamps, and Google Message IDs.
+     - Click **Diagnose Connection** to run an automated health check verifying your token refresh with Google and checking that the Gmail API is enabled.
+     - Enter your real personal email in the **Send Live Test Email to Any Inbox** field and click **Send Test Email** to verify instant email delivery.
+   - Check the **Delivery & Audit Logs** table to inspect delivery statuses, timestamps, error stack traces, and Google Message IDs.
    - Click **Trigger 23:50 Scheduler Now** to simulate tonight's reminder job on demand without waiting for 23:50!
 
 ---
@@ -164,6 +165,19 @@ You can obtain the permanent `refresh_token` in 60 seconds using Google's offici
 > - `GOOGLE_OAUTH_CLIENT_SECRET`
 > - `GOOGLE_OAUTH_REFRESH_TOKEN`
 > - `GOOGLE_OAUTH_CONNECTED_EMAIL` (your Gmail address)
+
+#### ⚠️ Common Google OAuth 2.0 Pitfalls & Solutions:
+1. **`invalid_grant` error**:
+   - **Reason**: In Google OAuth Playground, you forgot to check the **Gear icon > Use your own OAuth credentials** before authorizing. Without this, the token is generated using Google's client and will be rejected when refreshed with your `client_id`.
+   - **Fix**: Open OAuth Playground, click the Gear icon, paste your `Client ID` and `Client Secret`, and re-authorize.
+2. **`Gmail API has not been used... or it is disabled`**:
+   - **Reason**: The Gmail API is not enabled in your Google Cloud Project.
+   - **Fix**: Go to Google Cloud Console > **APIs & Services** > **Library**, search for **Gmail API**, and click **Enable**.
+3. **`Access blocked: app has not completed verification` / 403**:
+   - **Reason**: While your app is in "Testing" publishing status, only approved accounts can authenticate.
+   - **Fix**: Go to Google Cloud Console > **APIs & Services** > **OAuth consent screen** > **Test users**, and add your Gmail address.
+4. **Use the "Diagnose Connection" Button**:
+   - In the application's Admin Dashboard under **Google OAuth 2.0 Engine**, click the **Diagnose Connection** button at any time. It will test token exchange and Gmail profile access, giving you an exact real-time diagnosis.
 
 ---
 

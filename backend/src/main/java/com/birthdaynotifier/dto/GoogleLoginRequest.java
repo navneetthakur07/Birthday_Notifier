@@ -47,3 +47,4 @@ public class GoogleLoginRequest {
         this.googleId = googleId;
     }
 }
+

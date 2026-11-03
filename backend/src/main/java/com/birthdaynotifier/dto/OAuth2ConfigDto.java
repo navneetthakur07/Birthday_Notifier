@@ -77,3 +77,4 @@ public class OAuth2ConfigDto {
         this.authUrl = authUrl;
     }
 }
+

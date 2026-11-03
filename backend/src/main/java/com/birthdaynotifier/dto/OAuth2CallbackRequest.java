@@ -33,3 +33,4 @@ public class OAuth2CallbackRequest {
         this.redirectUri = redirectUri;
     }
 }
+
