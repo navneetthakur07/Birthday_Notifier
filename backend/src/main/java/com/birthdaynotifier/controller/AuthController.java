@@ -1,9 +1,6 @@
 package com.birthdaynotifier.controller;
 
-import com.birthdaynotifier.dto.JwtResponse;
-import com.birthdaynotifier.dto.LoginRequest;
-import com.birthdaynotifier.dto.MessageResponse;
-import com.birthdaynotifier.dto.RegisterRequest;
+import com.birthdaynotifier.dto.*;
 import com.birthdaynotifier.entity.Role;
 import com.birthdaynotifier.entity.RoleName;
 import com.birthdaynotifier.entity.User;
@@ -26,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @CrossOrigin(origins = "*", maxAge = 3600)
@@ -99,6 +97,47 @@ public class AuthController {
         return ResponseEntity.ok(new MessageResponse("User registered successfully!", true));
     }
 
+    /**
+     * Google OAuth 2.0 Sign In / Single Sign-On
+     */
+    @PostMapping("/google-login")
+    public ResponseEntity<?> googleLogin(@Valid @RequestBody GoogleLoginRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseGet(() -> {
+                    User newUser = new User(
+                            request.getEmail(),
+                            encoder.encode(UUID.randomUUID().toString()),
+                            request.getFullName()
+                    );
+                    Role role = roleRepository.findByName(RoleName.ROLE_USER)
+                            .orElseGet(() -> roleRepository.save(new Role(RoleName.ROLE_USER)));
+                    newUser.setRoles(Set.of(role));
+                    return userRepository.save(newUser);
+                });
+
+        if (!user.isActive()) {
+            return ResponseEntity.badRequest().body(new MessageResponse("Account is deactivated. Please contact admin.", false));
+        }
+
+        UserDetailsImpl userDetails = UserDetailsImpl.build(user);
+        UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        String jwt = jwtUtils.generateJwtToken(authentication);
+        List<String> roles = userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(new JwtResponse(
+                jwt,
+                user.getId(),
+                user.getEmail(),
+                user.getFullName(),
+                roles
+        ));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser(@AuthenticationPrincipal UserDetailsImpl currentUser) {
         if (currentUser == null) {
@@ -117,4 +156,3 @@ public class AuthController {
         ));
     }
 }
-

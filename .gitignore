@@ -20,7 +20,8 @@ dist-ssr/
 # Logs & Environment
 *.log
 .env
+.env.*
+*.env
 .env.local
 .DS_Store
 Thumbs.db
-

@@ -63,10 +63,9 @@ public class BirthdayController {
             @PathVariable UUID id) {
         boolean sent = birthdayService.triggerTestReminder(currentUser.getId(), id);
         if (sent) {
-            return ResponseEntity.ok(new MessageResponse("Test reminder notification dispatched successfully!", true));
+            return ResponseEntity.ok(new MessageResponse("Test reminder notification dispatched successfully to " + currentUser.getUsername() + "!", true));
         } else {
-            return ResponseEntity.ok(new MessageResponse("Test reminder simulation completed (SMTP credentials pending).", true));
+            return ResponseEntity.ok(new MessageResponse("Test reminder logged. If email was not delivered, check the Admin Delivery Logs for the Google OAuth 2.0 error trace.", false));
         }
     }
 }
-

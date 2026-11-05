@@ -20,6 +20,9 @@ public class EmailService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
 
+    @Autowired
+    private GoogleOAuth2Service googleOAuth2Service;
+
     @Autowired(required = false)
     private JavaMailSender mailSender;
 
@@ -27,7 +30,7 @@ public class EmailService {
     private NotificationLogRepository notificationLogRepository;
 
     @Value("${app.mail.from-email:birthday-notifier@noreply.com}")
-    private String fromEmail;
+    private String defaultFromEmail;
 
     @Value("${app.mail.from-name:Birthday Reminder Bot}")
     private String fromName;
@@ -52,45 +55,74 @@ public class EmailService {
         log.setRecipientEmail(recipientEmail);
         log.setScheduledFor(LocalDateTime.now());
 
-        if (mailSender == null) {
-            logger.warn("JavaMailSender not initialized or SMTP disabled. Simulating email delivery for: {}", recipientEmail);
-            log.setStatus("SIMULATED");
-            log.setSentAt(LocalDateTime.now());
-            notificationLogRepository.save(log);
-            return true;
+        // 1. Prioritize Modern Google OAuth 2.0 Delivery
+        if (googleOAuth2Service.isConfigured()) {
+            try {
+                String senderEmail = googleOAuth2Service.getEffectiveConnectedEmail();
+                if (senderEmail == null || senderEmail.isBlank()) {
+                    senderEmail = defaultFromEmail;
+                }
+
+                logger.info("Dispatching email via Google OAuth 2.0 Gmail API to: {}", recipientEmail);
+                String messageId = googleOAuth2Service.sendEmailViaOAuth2(recipientEmail, senderEmail, fromName, subject, htmlContent);
+
+                log.setStatus("SUCCESS (OAuth 2.0)");
+                log.setSentAt(LocalDateTime.now());
+                log.setErrorMessage("Delivered via Google OAuth 2.0 (Gmail Message ID: " + messageId + ")");
+                notificationLogRepository.save(log);
+                return true;
+            } catch (Exception ex) {
+                logger.error("OAuth 2.0 email dispatch failed for {}: {}", recipientEmail, ex.getMessage());
+                log.setStatus("FAILED (OAuth 2.0)");
+                log.setSentAt(LocalDateTime.now());
+                log.setErrorMessage(ex.getMessage());
+                notificationLogRepository.save(log);
+                return false;
+            }
         }
 
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+        // 2. Legacy SMTP Fallback (if configured)
+        if (mailSender != null) {
+            try {
+                MimeMessage message = mailSender.createMimeMessage();
+                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-            helper.setFrom(fromEmail, fromName);
-            helper.setTo(recipientEmail);
-            helper.setSubject(subject);
-            helper.setText(htmlContent, true);
+                helper.setFrom(defaultFromEmail, fromName);
+                helper.setTo(recipientEmail);
+                helper.setSubject(subject);
+                helper.setText(htmlContent, true);
 
-            mailSender.send(message);
-            logger.info("Successfully dispatched reminder email to: {} for person: {}", recipientEmail, personName);
+                mailSender.send(message);
+                logger.info("Dispatched reminder email via SMTP to: {} for person: {}", recipientEmail, personName);
 
-            log.setStatus("SUCCESS");
-            log.setSentAt(LocalDateTime.now());
-            notificationLogRepository.save(log);
-            return true;
-        } catch (Exception ex) {
-            logger.error("Failed to deliver email to {}: {}", recipientEmail, ex.getMessage());
-            log.setStatus("FAILED");
-            log.setSentAt(LocalDateTime.now());
-            log.setErrorMessage(ex.getMessage());
-            notificationLogRepository.save(log);
-            return false;
+                log.setStatus("SUCCESS (SMTP)");
+                log.setSentAt(LocalDateTime.now());
+                notificationLogRepository.save(log);
+                return true;
+            } catch (Exception ex) {
+                logger.warn("SMTP fallback failed for {}: {}", recipientEmail, ex.getMessage());
+                log.setStatus("FAILED (SMTP)");
+                log.setSentAt(LocalDateTime.now());
+                log.setErrorMessage("SMTP Error: " + ex.getMessage());
+                notificationLogRepository.save(log);
+                return false;
+            }
         }
+
+        // 3. Simulated Delivery when neither is configured yet
+        logger.warn("Neither Google OAuth 2.0 nor SMTP is configured. Simulating delivery for: {}", recipientEmail);
+        log.setStatus("SIMULATED");
+        log.setSentAt(LocalDateTime.now());
+        log.setErrorMessage("Google OAuth 2.0 is pending setup. Authorize Gmail in the Admin Portal to enable live delivery.");
+        notificationLogRepository.save(log);
+        return true;
     }
 
     private String buildHtmlEmailContent(String userName, String personName, String relationship, Integer turningAge, String notes, boolean isManualTest) {
         String ageText = turningAge != null ? "<p style=\"font-size: 16px; margin: 4px 0;\"><strong>Turning Age:</strong> " + turningAge + " years old 🎉</p>" : "";
         String badge = isManualTest
-                ? "<div style=\"background-color: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 9999px; display: inline-block; font-size: 13px; font-weight: bold; margin-bottom: 12px;\">🧪 Manual Test Notification</div>"
-                : "<div style=\"background-color: #ecfdf5; color: #065f46; padding: 6px 12px; border-radius: 9999px; display: inline-block; font-size: 13px; font-weight: bold; margin-bottom: 12px;\">⏰ 10-Minute Midnight Eve Alert (23:50)</div>";
+                ? "<div style=\"background-color: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 9999px; display: inline-block; font-size: 13px; font-weight: bold; margin-bottom: 12px;\">🧪 Manual Test Notification (OAuth 2.0 Ready)</div>"
+                : "<div style=\"background-color: #ecfdf5; color: #065f46; padding: 6px 12px; border-radius: 9999px; display: inline-block; font-size: 13px; font-weight: bold; margin-bottom: 12px;\">⏰ 10-Minute Midnight Eve Alert (23:50 via OAuth 2.0)</div>";
 
         return """
             <!DOCTYPE html>
@@ -132,7 +164,7 @@ public class EmailService {
                                         </p>
 
                                         <div style="margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center;">
-                                            Birthday Reminder Application &bull; Automatic 23:50 Eve Notification Service
+                                            Birthday Reminder Application &bull; Delivered via Google OAuth 2.0 API &bull; 23:50 Notification Engine
                                         </div>
                                     </td>
                                 </tr>
@@ -145,4 +177,3 @@ public class EmailService {
             """.formatted(badge, userName, relationship.toLowerCase(), personName, personName, relationship, ageText, notes);
     }
 }
-
